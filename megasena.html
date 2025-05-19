@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Estatísticas Mega-Sena</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    /* Cores Mega-Sena: verde escuro, amarelo, branco */
+    :root {
+      --verde-escuro: #004d26;
+      --verde-claro: #00a651;
+      --amarelo: #ffd500;
+      --branco: #ffffff;
+      --cinza-claro: #f0f0f0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: var(--cinza-claro);
+      color: var(--verde-escuro);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      color: var(--verde-escuro);
+      margin-bottom: 20px;
+      text-align: center;
+      font-weight: 700;
+      text-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    }
+
+    input[type="file"] {
+      border: 2px solid var(--verde-escuro);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--branco);
+      cursor: pointer;
+      max-width: 100%;
+    }
+
+    .botoes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 20px 0;
+      justify-content: center;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    button {
+      background-color: var(--verde-escuro);
+      color: var(--amarelo);
+      border: none;
+      border-radius: 25px;
+      padding: 12px 22px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      box-shadow: 0 3px 6px rgba(0, 77, 38, 0.3);
+      transition: background-color 0.3s ease, box-shadow 0.3s ease;
+      flex: 1 1 45%;
+      min-width: 180px;
+      text-align: center;
+    }
+
+    button:hover,
+    button:focus {
+      background-color: var(--verde-claro);
+      box-shadow: 0 6px 12px rgba(0, 166, 81, 0.5);
+      outline: none;
+      color: var(--branco);
+    }
+
+    .resultados-container {
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      margin-top: 10px;
+    }
+
+    .resultado {
+      background: var(--branco);
+      border: 2px solid var(--verde-escuro);
+      border-radius: 12px;
+      padding: 15px 20px;
+      box-shadow: 0 4px 8px rgba(0, 77, 38, 0.1);
+      color: var(--verde-escuro);
+      font-weight: 600;
+      font-size: 1rem;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .resultado h3 {
+      margin-top: 0;
+      color: var(--verde-escuro);
+      text-align: center;
+      font-weight: 700;
+      font-size: 1.3rem;
+      border-bottom: 2px solid var(--amarelo);
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+
+    .resultado div {
+      padding: 5px 0;
+      border-bottom: 1px solid #ddd;
+      letter-spacing: 0.03em;
+    }
+
+    .resultado div:last-child {
+      border-bottom: none;
+    }
+
+    /* Scrollbar customizada para navegadores Webkit */
+    .resultado::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .resultado::-webkit-scrollbar-thumb {
+      background-color: var(--verde-escuro);
+      border-radius: 10px;
+    }
+
+    /* Responsividade */
+    @media (max-width: 480px) {
+      button {
+        flex: 1 1 100%;
+        font-size: 1.1rem;
+        padding: 14px 20px;
+      }
+      body {
+        padding: 15px 10px;
+      }
+      .resultado {
+        max-height: 220px;
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Analisador da Mega-Sena</h1>
+  <input type="file" id="arquivo" accept=".xlsx" />
+  <div class="botoes">
+    <button onclick="analisar()">Top 5 Combinações (6 dezenas)</button>
+    <button onclick="mostrarCombinacoes(2)">Top 10 Duplas</button>
+    <button onclick="mostrarCombinacoes(3)">Top 10 Trincas</button>
+    <button onclick="mostrarCombinacoes(4)">Top 10 Quadras</button>
+    <button onclick="mostrarCombinacoes(5)">Top 10 Quinas</button>
+  </div>
+
+  <div class="resultados-container">
+    <div class="resultado" id="resultado"></div>
+    <div class="resultado" id="resultado-duplas"></div>
+    <div class="resultado" id="resultado-trincas"></div>
+    <div class="resultado" id="resultado-quadras"></div>
+    <div class="resultado" id="resultado-quinas"></div>
+  </div>
+
+  <script>
+    let dadosDezenas = [];
+
+    // Função para análise inicial - Top 5 combinações 6 dezenas
+    function analisar() {
+      const input = document.getElementById('arquivo');
+      const resultado = document.getElementById('resultado');
+      limparResultadosMenores();
+
+      if (!input.files[0]) {
+        resultado.innerHTML = 'Por favor, envie um arquivo .xlsx.';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        const startIndex = json.findIndex(row => row.some(cell => String(cell).includes("Concurso")));
+        const dados = json.slice(startIndex + 1);
+
+        const contagem = {};
+        dadosDezenas = [];
+
+        dados.forEach(row => {
+          const dezenas = row.slice(2, 8).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+          if (dezenas.length === 6) {
+            const chave = dezenas.join(',');
+            contagem[chave] = (contagem[chave] || 0) + 1;
+            dadosDezenas.push(dezenas);
+          }
+        });
+
+        const top = Object.entries(contagem)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+
+        if (top.length === 0) {
+          resultado.innerHTML = 'Nenhuma combinação encontrada no arquivo.';
+          return;
+        }
+
+        resultado.innerHTML = "<h3>Top 5 Combinações Completas (6 dezenas):</h3>" + 
+          top.map(([jogo, vezes]) => `<div>${jogo} - ${vezes}x</div>`).join("");
+      };
+
+      reader.readAsArrayBuffer(input.files[0]);
+    }
+
+    // Função para limpar os resultados menores (duplas, trincas etc) ao fazer nova análise
+    function limparResultadosMenores() {
+      document.getElementById('resultado-duplas').innerHTML = '';
+      document.getElementById('resultado-trincas').innerHTML = '';
+      document.getElementById('resultado-quadras').innerHTML = '';
+      document.getElementById('resultado-quinas').innerHTML = '';
+    }
+
+    // Função para mostrar combinações parciais em divs individuais
+    function mostrarCombinacoes(tamanho) {
+      if (dadosDezenas.length === 0) {
+        alert("Você precisa carregar e analisar a planilha primeiro.");
+        return;
+      }
+
+      const contagem = {};
+
+      dadosDezenas.forEach(dezenas => {
+        const combinacoes = gerarCombinacoes(dezenas, tamanho);
+        combinacoes.forEach(comb => {
+          const chave = comb.join(',');
+          contagem[chave] = (contagem[chave] || 0) + 1;
+        });
+      });
+
+      const top = Object.entries(contagem)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const titulos = {
+        2: "Top 10 Duplas Mais Frequentes",
+        3: "Top 10 Trincas Mais Frequentes",
+        4: "Top 10 Quadras Mais Frequentes",
+        5: "Top 10 Quinas Mais Frequentes"
+      };
+
+      const idMap = {
+        2: "resultado-duplas",
+        3: "resultado-trincas",
+        4: "resultado-quadras",
+        5: "resultado-quinas"
+      };
+
+      const container = document.getElementById(idMap[tamanho]);
+      container.innerHTML = `<h3>${titulos[tamanho]}</h3>` +
+        top.map(([comb, vezes]) => `<div>${comb} - ${vezes}x</div>`).join("");
+    }
+
+    // Função para gerar combinações (sem repetição) de tamanho k
+    function gerarCombinacoes(arr, k) {
+      const resultado = [];
+      const aux = (start, path) => {
+        if (path.length === k) {
+          resultado.push([...path]);
+          return;
+        }
+        for (let i = start; i < arr.length; i++) {
+          path.push(arr[i]);
+          aux(i + 1, path);
+          path.pop();
+        }
+      };
+      aux(0, []);
+      return resultado;
+    }
+  </script>
+</body>
+</html>
+
