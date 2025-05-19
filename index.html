@@ -152,9 +152,11 @@
     }
   </style>
 </head>
+<!-- Mantenha o título e a estrutura, remova o input do arquivo ou deixe só para backup -->
 <body>
   <h1>Analisador da Mega-Sena</h1>
-  <input type="file" id="arquivo" accept=".xlsx" />
+  <!--<input type="file" id="arquivo" accept=".xlsx" />--> <!-- opcional remover -->
+
   <div class="botoes">
     <button onclick="analisar()">Top 5 Combinações (6 dezenas)</button>
     <button onclick="mostrarCombinacoes(2)">Top 10 Duplas</button>
@@ -171,124 +173,139 @@
     <div class="resultado" id="resultado-quinas"></div>
   </div>
 
-  <script>
-    let dadosDezenas = [];
+<script>
+  let dadosDezenas = [];
+  let dadosProntos = false;
 
-    // Função para análise inicial - Top 5 combinações 6 dezenas
-    function analisar() {
-      const input = document.getElementById('arquivo');
-      const resultado = document.getElementById('resultado');
-      limparResultadosMenores();
+  // Função para carregar o CSV público do Google Sheets e preparar os dados
+  async function carregarDadosCSV() {
+    const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS0-4zGAbUWIMEJXVQYf5mrfQxnqps63HbrXaCrn2gm4NdJjMlhs7UNGMnUinHmR3aqQK3RmEw08_bO/pub?output=csv';
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Falha ao carregar CSV");
 
-      if (!input.files[0]) {
-        resultado.innerHTML = 'Por favor, envie um arquivo .xlsx.';
-        return;
+      const csvText = await response.text();
+      processarCSV(csvText);
+      dadosProntos = true;
+      document.getElementById('resultado').innerHTML = '<div>Dados carregados com sucesso! Clique nos botões para analisar.</div>';
+    } catch (err) {
+      document.getElementById('resultado').innerHTML = 'Erro ao carregar dados: ' + err.message;
+      dadosProntos = false;
+    }
+  }
+
+  // Função para processar o CSV e extrair as dezenas
+  function processarCSV(csvText) {
+    const linhas = csvText.trim().split('\n');
+    // Ignorar a primeira linha (cabeçalho)
+    dadosDezenas = [];
+
+    // Colunas: A=Concurso, B=Data, C-H=bola1 a bola6
+    for(let i = 1; i < linhas.length; i++) {
+      const cols = linhas[i].split(',');
+      // Pega colunas C até H = indices 2 até 7
+      let dezenas = cols.slice(2, 8).map(s => Number(s)).filter(n => !isNaN(n)).sort((a,b)=>a-b);
+      if(dezenas.length === 6) {
+        dadosDezenas.push(dezenas);
       }
+    }
+  }
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  // Função de análise original adaptada para usar dadosDezenas já carregados
+  function analisar() {
+    const resultado = document.getElementById('resultado');
+    limparResultadosMenores();
 
-        const startIndex = json.findIndex(row => row.some(cell => String(cell).includes("Concurso")));
-        const dados = json.slice(startIndex + 1);
-
-        const contagem = {};
-        dadosDezenas = [];
-
-        dados.forEach(row => {
-          const dezenas = row.slice(2, 8).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
-          if (dezenas.length === 6) {
-            const chave = dezenas.join(',');
-            contagem[chave] = (contagem[chave] || 0) + 1;
-            dadosDezenas.push(dezenas);
-          }
-        });
-
-        const top = Object.entries(contagem)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5);
-
-        if (top.length === 0) {
-          resultado.innerHTML = 'Nenhuma combinação encontrada no arquivo.';
-          return;
-        }
-
-        resultado.innerHTML = "<h3>Top 5 Combinações Completas (6 dezenas):</h3>" + 
-          top.map(([jogo, vezes]) => `<div>${jogo} - ${vezes}x</div>`).join("");
-      };
-
-      reader.readAsArrayBuffer(input.files[0]);
+    if(!dadosProntos || dadosDezenas.length === 0) {
+      resultado.innerHTML = 'Os dados ainda não foram carregados. Aguarde ou recarregue a página.';
+      return;
     }
 
-    // Função para limpar os resultados menores (duplas, trincas etc) ao fazer nova análise
-    function limparResultadosMenores() {
-      document.getElementById('resultado-duplas').innerHTML = '';
-      document.getElementById('resultado-trincas').innerHTML = '';
-      document.getElementById('resultado-quadras').innerHTML = '';
-      document.getElementById('resultado-quinas').innerHTML = '';
+    const contagem = {};
+
+    dadosDezenas.forEach(dezenas => {
+      const chave = dezenas.join(',');
+      contagem[chave] = (contagem[chave] || 0) + 1;
+    });
+
+    const top = Object.entries(contagem)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    if(top.length === 0) {
+      resultado.innerHTML = 'Nenhuma combinação encontrada.';
+      return;
     }
 
-    // Função para mostrar combinações parciais em divs individuais
-    function mostrarCombinacoes(tamanho) {
-      if (dadosDezenas.length === 0) {
-        alert("Você precisa carregar e analisar a planilha primeiro.");
-        return;
-      }
+    resultado.innerHTML = "<h3>Top 5 Combinações Completas (6 dezenas):</h3>" + 
+      top.map(([jogo, vezes]) => `<div>${jogo} - ${vezes}x</div>`).join("");
+  }
 
-      const contagem = {};
+  function limparResultadosMenores() {
+    document.getElementById('resultado-duplas').innerHTML = '';
+    document.getElementById('resultado-trincas').innerHTML = '';
+    document.getElementById('resultado-quadras').innerHTML = '';
+    document.getElementById('resultado-quinas').innerHTML = '';
+  }
 
-      dadosDezenas.forEach(dezenas => {
-        const combinacoes = gerarCombinacoes(dezenas, tamanho);
-        combinacoes.forEach(comb => {
-          const chave = comb.join(',');
-          contagem[chave] = (contagem[chave] || 0) + 1;
-        });
+  function mostrarCombinacoes(tamanho) {
+    if(!dadosProntos || dadosDezenas.length === 0) {
+      alert("Os dados ainda não foram carregados. Aguarde ou recarregue a página.");
+      return;
+    }
+
+    const contagem = {};
+    dadosDezenas.forEach(dezenas => {
+      const combinacoes = gerarCombinacoes(dezenas, tamanho);
+      combinacoes.forEach(comb => {
+        const chave = comb.join(',');
+        contagem[chave] = (contagem[chave] || 0) + 1;
       });
+    });
 
-      const top = Object.entries(contagem)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+    const top = Object.entries(contagem)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
 
-      const titulos = {
-        2: "Top 10 Duplas Mais Frequentes",
-        3: "Top 10 Trincas Mais Frequentes",
-        4: "Top 10 Quadras Mais Frequentes",
-        5: "Top 10 Quinas Mais Frequentes"
-      };
+    const titulos = {
+      2: "Top 10 Duplas Mais Frequentes",
+      3: "Top 10 Trincas Mais Frequentes",
+      4: "Top 10 Quadras Mais Frequentes",
+      5: "Top 10 Quinas Mais Frequentes"
+    };
 
-      const idMap = {
-        2: "resultado-duplas",
-        3: "resultado-trincas",
-        4: "resultado-quadras",
-        5: "resultado-quinas"
-      };
+    const idMap = {
+      2: "resultado-duplas",
+      3: "resultado-trincas",
+      4: "resultado-quadras",
+      5: "resultado-quinas"
+    };
 
-      const container = document.getElementById(idMap[tamanho]);
-      container.innerHTML = `<h3>${titulos[tamanho]}</h3>` +
-        top.map(([comb, vezes]) => `<div>${comb} - ${vezes}x</div>`).join("");
-    }
+    const container = document.getElementById(idMap[tamanho]);
+    container.innerHTML = `<h3>${titulos[tamanho]}</h3>` +
+      top.map(([comb, vezes]) => `<div>${comb} - ${vezes}x</div>`).join("");
+  }
 
-    // Função para gerar combinações (sem repetição) de tamanho k
-    function gerarCombinacoes(arr, k) {
-      const resultado = [];
-      const aux = (start, path) => {
-        if (path.length === k) {
-          resultado.push([...path]);
-          return;
-        }
-        for (let i = start; i < arr.length; i++) {
-          path.push(arr[i]);
-          aux(i + 1, path);
-          path.pop();
-        }
-      };
-      aux(0, []);
-      return resultado;
-    }
-  </script>
+  function gerarCombinacoes(arr, k) {
+    const resultado = [];
+    const aux = (start, path) => {
+      if(path.length === k) {
+        resultado.push([...path]);
+        return;
+      }
+      for(let i = start; i < arr.length; i++) {
+        path.push(arr[i]);
+        aux(i+1, path);
+        path.pop();
+      }
+    };
+    aux(0, []);
+    return resultado;
+  }
+
+  // Carrega os dados ao abrir a página automaticamente
+  carregarDadosCSV();
+
+</script>
 </body>
-</html>
 
